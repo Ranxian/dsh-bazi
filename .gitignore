@@ -1,0 +1,10 @@
+# 打包产物（npm pack 生成，可随时重打）
+*.tgz
+
+# 开发期依赖垫片（scripts/link-deps.mjs 建的 junction，指向本机 DSH 安装）
+node_modules/
+
+# 日志与编辑器杂项
+*.log
+.DS_Store
+Thumbs.db
