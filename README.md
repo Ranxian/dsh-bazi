@@ -15,6 +15,7 @@
 git clone https://github.com/Ranxian/dsh-bazi.git
 cd dsh-bazi
 
+npm install                                         # 装依赖（跑测试需要，打包不需要）
 npm pack                                            # 产出 dsh-bazi-0.1.0.tgz
 dsh plugin --profile web add ./dsh-bazi-0.1.0.tgz   # 会自动登记到 dsh.profile.bundles
 ```
@@ -69,7 +70,8 @@ npm run golden      # 27 个固定用例 + 300 个随机用例，与 Python 原�
 覆盖 1901/1984/2000/2099 边界年、立春前后、早晚子时、闰月、时辰未知、已故年份等。
 
 ```bash
-npm test            # 81 个用例：内核 / Host 插件 / 浏览器页签
+npm install     # 只在 clone 后需要先跑一次；zod 是唯一运行时依赖
+npm test        # 81 个用例：内核 / Host 插件 / 浏览器页签
 ```
 
 测试分三层，都自包含、不需要装进 DSH：
@@ -78,8 +80,12 @@ npm test            # 81 个用例：内核 / Host 插件 / 浏览器页签
 - `test/plugin.test.mjs` — 工具注册面、工具行为、投影折叠与 wire 校验
 - `test/ui.test.mjs` — 用最小桩替换模块表与 react，断言「投影 → 元素树」的映射
 
-`scripts/link-deps.mjs` 建了 `zod` 与 `@deepseek-ai/*` 的 junction，只为本地跑测试；
-装进 profile 后这些由 DSH 安装体提供（`package.json` 里已声明为 dependency / peerDependency）。
+`npm install` 会读出 `package-lock.json` 精确复现同一套依赖（`npm ci` 亦可）。
+`zod` 是唯一的运行时依赖；`@deepseek-ai/dsh-tools` 等声明为 peerDependency，
+跑测试时 npm 会一并带上，装进 profile 后则由 DSH 安装体提供。
+
+`scripts/link-deps.mjs` 是早期「本机已有 DSH 安装」时用的开发垫片，把宿主安装里的包
+junction 进 `node_modules`。现在不需要了，留着只作无 npm 网络时的兜底。
 
 ## 与 dsh-pentest 的取舍
 
