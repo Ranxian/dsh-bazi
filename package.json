@@ -1,6 +1,6 @@
 {
   "name": "dsh-bazi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "DSH 八字模式：四柱排盘、大运流年、神煞与五行统计，按经典典籍逐节论断并用历史事件校准，在 Web 中展示命盘与论断链。",
   "type": "module",
@@ -17,6 +17,7 @@
   "files": [
     "lib/**/*.js",
     "references/**/*.md",
+    "CHANGELOG.md",
     "cordis.patch.yml"
   ],
   "license": "MIT",
@@ -25,8 +26,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-storage-domain": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-storage-domain": "^0.1.0-rc.6 || ^0.2.0-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6 || ^0.2.0-rc.1"
   },
   "dsh": {
     "client": {
@@ -48,5 +49,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "lunar-javascript": "^1.7.7"
   }
 }

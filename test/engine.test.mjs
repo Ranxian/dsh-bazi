@@ -23,6 +23,21 @@ import {
   GAN,
   ZHI,
   formatCanggan,
+  NAYIN,
+  nayinOf,
+  xunOf,
+  taiyuanOf,
+  taixiOf,
+  minggongOf,
+  shengongOf,
+  liuyueRows,
+  liunianGz,
+  equationOfTimeMinutes,
+  trueSolarCorrection,
+  addYearsMonths,
+  jdFromBeijing,
+  solarTermUtcJd,
+  beijingFromJd,
 } from '../lib/engine.js';
 import { changshengOf, ganZhiRelations, wuxingStats } from '../lib/tables.js';
 
@@ -48,6 +63,26 @@ test('黄金用例：1990-05-15 午时男 → 庚午/辛巳/庚辰/壬午，顺�
 test('立春前：1990-02-03 10:00 年柱己巳而不是庚午', () => {
   const result = compute({ solar: { y: 1990, m: 2, d: 3 }, hour: 10, minute: 0, sex: '男' });
   assert.equal(pillarsOf(result)[0], '己巳');
+});
+
+// 旧版用 Meeus 25 章三中心差简式，黄经差 10″ 上下，换成时刻就是偏早 5–8 分钟。
+// 立春偏早 6 分 42 秒，足以把交节前几分钟出生的人判进下一年。这条守住那个回归。
+test('节气时刻与历书对得上：2024 立春 16:26:53', () => {
+  const anchors = [
+    // [年, 黄经, 历书北京时]
+    [2024, 315, [2024, 2, 4, 16, 26, 53]], // 立春
+    [2024, 0, [2024, 3, 20, 11, 6, 12]], // 春分
+    [2024, 180, [2024, 9, 22, 20, 43, 27]], // 秋分
+    [2024, 270, [2024, 12, 21, 17, 20, 34]], // 冬至
+    [2020, 315, [2020, 2, 4, 17, 3, 12]], // 立春
+  ];
+  const fmt = (t) => `${t.y}-${String(t.m).padStart(2, '0')}-${String(t.d).padStart(2, '0')} `
+    + `${String(t.h).padStart(2, '0')}:${String(t.mi).padStart(2, '0')}:${String(t.s).padStart(2, '0')}`;
+  for (const [year, lon, [y, m, d, h, mi, s]] of anchors) {
+    const got = beijingFromJd(solarTermUtcJd(year, lon));
+    const diff = Math.abs(Date.UTC(got.y, got.m - 1, got.d, got.h, got.mi, got.s) - Date.UTC(y, m - 1, d, h, mi, s)) / 1000;
+    assert.ok(diff <= 30, `${year} 黄经 ${lon}° 应约 ${y}-${m}-${d} ${h}:${mi}:${s}，实得 ${fmt(got)}，差 ${diff} 秒`);
+  }
 });
 
 test('夜子时 23:30 用次日日柱，时支仍为子', () => {
@@ -432,4 +467,211 @@ test('ZHI 顺序与六十甲子一致', () => {
       return GAN[index % 10] + ZHI[index % 12];
     })());
   }
+});
+
+// ---------------------------------------------------------------------------
+// 命盘附属：纳音 / 旬空 / 四宫位 / 十二长生
+// ---------------------------------------------------------------------------
+
+test('纳音表覆盖六十甲子，且相邻两干支同名', () => {
+  assert.equal(NAYIN.size, 60);
+  assert.equal(nayinOf('甲', '子'), '海中金');
+  assert.equal(nayinOf('乙', '丑'), '海中金');
+  assert.equal(nayinOf('壬', '戌'), '大海水');
+  assert.equal(nayinOf('癸', '亥'), '大海水');
+  assert.equal(nayinOf('庚', '午'), '路旁土');
+  assert.equal(nayinOf('甲', '丑'), '—', '非六十甲子内的组合应给占位符');
+  for (let i = 0; i < 60; i += 2) {
+    const a = GAN[i % 10] + ZHI[i % 12];
+    const b = GAN[(i + 1) % 10] + ZHI[(i + 1) % 12];
+    assert.equal(nayinOf(a[0], a[1]), nayinOf(b[0], b[1]), `${a} 与 ${b} 应同一纳音`);
+  }
+});
+
+test('旬与旬空：甲子旬戌亥，甲戌旬申酉', () => {
+  assert.equal(xunOf('甲', '子'), '甲子');
+  assert.equal(xunOf('乙', '丑'), '甲子');
+  assert.equal(xunOf('甲', '戌'), '甲戌');
+  assert.equal(xunOf('庚', '辰'), '甲戌');
+  assert.deepEqual(kongwangZhi('甲', '子'), ['戌', '亥']);
+  assert.deepEqual(kongwangZhi('庚', '辰'), ['申', '酉']);
+  assert.equal(xunOf('nope', '子'), '—');
+});
+
+test('四宫位：1990-05-15 午时 → 胎元壬申 / 胎息乙酉 / 命宫壬午 / 身宫戊子', () => {
+  assert.equal(taiyuanOf('辛', '巳'), '壬申');
+  assert.equal(taixiOf('庚', '辰'), '乙酉');
+  assert.equal(minggongOf('庚', '巳', '午'), '壬午');
+  assert.equal(shengongOf('庚', '巳', '午'), '戊子');
+  // 非法输入给占位符而不是抛错
+  assert.equal(taiyuanOf('X', '巳'), '—');
+  assert.equal(minggongOf('庚', '巳', 'X'), '—');
+});
+
+test('十二长生：阳干顺行、阴干逆行，戊从丙、己从丁', () => {
+  assert.equal(changshengOf('甲', '亥'), '长生');
+  assert.equal(changshengOf('甲', '子'), '沐浴');
+  assert.equal(changshengOf('乙', '午'), '长生');
+  assert.equal(changshengOf('乙', '巳'), '沐浴', '阴干逆行');
+  assert.equal(changshengOf('戊', '寅'), '长生');
+  assert.equal(changshengOf('己', '酉'), '长生');
+  assert.equal(changshengOf('庚', '午'), '沐浴');
+  assert.equal(changshengOf('X', '子'), '—');
+});
+
+test('命盘逐柱带齐纳音、星运、自坐、旬与旬空', () => {
+  const r = compute({ solar: { y: 1990, m: 5, d: 15 }, shichen: '午', sex: '男' });
+  assert.deepEqual(
+    ['year', 'month', 'day', 'hour'].map((k) => r.pillars[k].nayin),
+    ['路旁土', '白蜡金', '白蜡金', '杨柳木'],
+  );
+  assert.deepEqual(
+    ['year', 'month', 'day', 'hour'].map((k) => r.pillars[k].dishi),
+    ['沐浴', '长生', '养', '沐浴'],
+  );
+  assert.deepEqual(
+    ['year', 'month', 'day', 'hour'].map((k) => r.pillars[k].zizuo),
+    ['沐浴', '死', '养', '胎'],
+  );
+  assert.deepEqual(
+    ['year', 'month', 'day', 'hour'].map((k) => r.pillars[k].xun),
+    ['甲子', '甲戌', '甲戌', '甲戌'],
+  );
+  assert.deepEqual(
+    ['year', 'month', 'day', 'hour'].map((k) => r.pillars[k].kongwang),
+    ['戌亥', '申酉', '申酉', '申酉'],
+  );
+  assert.deepEqual(r.palaces, {
+    taiyuan: '壬申', taixi: '乙酉', minggong: '壬午', shengong: '戊子',
+  });
+});
+
+test('时柱未知时，命宫与身宫给「未知」而不是硬凑', () => {
+  const r = compute({ solar: { y: 1990, m: 5, d: 15 }, sex: '男' });
+  assert.equal(r.hour_unknown, true);
+  assert.equal(r.palaces.minggong, '未知');
+  assert.equal(r.palaces.shengong, '未知');
+  assert.equal(r.palaces.taiyuan, '壬申', '胎元只依赖月柱，仍应给出');
+  assert.equal(r.palaces.taixi, '乙酉', '胎息只依赖日柱，仍应给出');
+  assert.equal(r.pillars.hour.nayin, '未知');
+});
+
+// ---------------------------------------------------------------------------
+// 流月 / 真太阳时 / 起运回执
+// ---------------------------------------------------------------------------
+
+test('流月：甲辰年十二节气月，五虎遁起丙寅', () => {
+  const rows = liuyueRows(2024);
+  assert.equal(rows.length, 12);
+  assert.equal(liunianGz(2024), '甲辰');
+  assert.deepEqual(rows.map((r) => r.gz), [
+    '丙寅', '丁卯', '戊辰', '己巳', '庚午', '辛未',
+    '壬申', '癸酉', '甲戌', '乙亥', '丙子', '丁丑',
+  ]);
+  assert.equal(rows[0].name, '立春');
+  assert.equal(rows[0].start, '2024-02-04');
+  assert.equal(rows[11].name, '小寒');
+  assert.equal(rows[11].start, '2025-01-05', '丑月属次年初的小寒');
+});
+
+test('五虎遁：年干与寅月干的对应关系', () => {
+  const cases = [
+    [2024, '甲', '丙寅'], [2025, '乙', '戊寅'], [2026, '丙', '庚寅'],
+    [2027, '丁', '壬寅'], [2028, '戊', '甲寅'], [2029, '己', '丙寅'],
+  ];
+  for (const [year, gan, expect] of cases) {
+    assert.equal(liunianGz(year)[0], gan, `${year} 年干应为 ${gan}`);
+    assert.equal(liuyueRows(year)[0].gz, expect);
+  }
+});
+
+test('均时差：2 月中旬约 -14 分、5 月中旬约 +4 分、11 月初约 +16 分', () => {
+  assert.ok(equationOfTimeMinutes(2024, 2, 11) < -13, '2 月中旬均时差应在 -14 分附近');
+  assert.ok(equationOfTimeMinutes(2024, 5, 15) > 3, '5 月中旬均时差应在 +4 分附近');
+  assert.ok(equationOfTimeMinutes(2024, 11, 3) > 15, '11 月初均时差应在 +16 分附近');
+  for (let m = 1; m <= 12; m += 1) {
+    const v = equationOfTimeMinutes(2024, m, 15);
+    assert.ok(v > -17 && v < 17, `${m} 月均时差应在 ±17 分内，实得 ${v}`);
+  }
+  // 9 月初与冬至后过零点。旧 Spencer 近似式在这里分别偏 +0.96 / -1.32 分钟，
+  // 刚好够把时辰判错，所以单独立断言。
+  assert.ok(Math.abs(equationOfTimeMinutes(2024, 9, 1)) < 0.2, '9 月初均时差应过零');
+  assert.ok(Math.abs(equationOfTimeMinutes(2024, 12, 25)) < 0.2, '冬至后均时差应过零');
+});
+
+test('真太阳时：经度差按每度 4 分钟，西移为负', () => {
+  const bei = trueSolarCorrection({ y: 1990, m: 5, d: 15 }, 12, 0, 116.4);
+  assert.equal(bei.longitudeMinutes, -14.4);
+  assert.equal(bei.crossedDay, false);
+  assert.match(bei.corrected, /^1990-05-15 11:4\d$/);
+
+  const shanghai = trueSolarCorrection({ y: 1990, m: 5, d: 15 }, 12, 0, 121.5);
+  assert.equal(shanghai.longitudeMinutes, 6);
+
+  const urumqi = trueSolarCorrection({ y: 1990, m: 5, d: 15 }, 12, 0, 87.6);
+  assert.equal(urumqi.longitudeMinutes, -129.6);
+});
+
+test('真太阳时跨日：乌鲁木齐 00:10 校正后回到前一日', () => {
+  const r = trueSolarCorrection({ y: 1990, m: 5, d: 15 }, 0, 10, 87.6);
+  assert.equal(r.crossedDay, true);
+  assert.match(r.corrected, /^1990-05-14 2\d:\d\d$/);
+});
+
+test('给经度后排盘用校正时刻，并标出跨日警告', () => {
+  const plain = compute({ solar: { y: 1990, m: 5, d: 15 }, hour: 23, minute: 30, sex: '男' });
+  const corrected = compute({
+    solar: { y: 1990, m: 5, d: 15 }, hour: 23, minute: 30, sex: '男', longitude: 87.6,
+  });
+  assert.equal(plain.tst, null, '不给经度不做校正');
+  assert.notEqual(corrected.tst, null);
+  // 乌鲁木齐 23:30 真太阳时约 21:24，仍属亥时；未校正时是晚子时归次日
+  assert.ok(corrected.pillars.day.gan + corrected.pillars.day.zhi
+    !== plain.pillars.day.gan + plain.pillars.day.zhi);
+  assert.equal(corrected.shichen_text.startsWith('亥'), true);
+  assert.ok(corrected.warnings.includes('真太阳时校正后跨日') === false, '同一日内不应报跨日');
+});
+
+test('经度越界要报错', () => {
+  assert.throws(
+    () => compute({ solar: { y: 1990, m: 5, d: 15 }, hour: 12, sex: '男', longitude: 200 }),
+    /经度/,
+  );
+});
+
+test('起运回执：规则、锚定节气、天数与交运日期一致', () => {
+  const r = compute({ solar: { y: 1990, m: 5, d: 15 }, shichen: '午', sex: '男' });
+  const receipt = r.qiyun_receipt;
+  assert.equal(receipt.rule, 'DAYS_TO_YEARS_V1');
+  assert.equal(receipt.status, 'CALCULATED');
+  assert.equal(receipt.forward, true);
+  // 顺排数的是出生后的下一个节（芒种），不是月令所在的立夏：
+  // 差值 21.78 天只能对上芒种，若标成立夏，回执就会自相矛盾。
+  assert.equal(r.jie_name, '立夏');
+  assert.equal(receipt.anchorJie, '芒种');
+  const birthJd = jdFromBeijing(1990, 5, 15, 12, 0);
+  assert.ok(
+    Math.abs(receipt.days - Math.abs(solarTermUtcJd(1990, 75) - birthJd)) < 0.01,
+    '回执天数应等于到芒种的间隔',
+  );
+  assert.equal(receipt.years, r.qiyun_years);
+  assert.equal(receipt.months, r.qiyun_months);
+  assert.match(receipt.jiaoyun, /^\d{4}-\d{2}-\d{2}$/);
+  // 起运 7 岁 3 个月 → 交运落在 1997-08-15
+  assert.equal(receipt.jiaoyun, addYearsMonths({ y: 1990, m: 5, d: 15 }, receipt.years, receipt.months)
+    .y + '-' + String(addYearsMonths({ y: 1990, m: 5, d: 15 }, receipt.years, receipt.months).m).padStart(2, '0')
+    + '-' + String(addYearsMonths({ y: 1990, m: 5, d: 15 }, receipt.years, receipt.months).d).padStart(2, '0'));
+});
+
+test('加年月：月末溢出取当月最后一天', () => {
+  assert.deepEqual(addYearsMonths({ y: 2024, m: 1, d: 31 }, 0, 1), { y: 2024, m: 2, d: 29 });
+  assert.deepEqual(addYearsMonths({ y: 2023, m: 1, d: 31 }, 0, 1), { y: 2023, m: 2, d: 28 });
+  assert.deepEqual(addYearsMonths({ y: 1990, m: 12, d: 15 }, 1, 1), { y: 1992, m: 1, d: 15 });
+  assert.deepEqual(addYearsMonths({ y: 1990, m: 5, d: 15 }, 8, 3), { y: 1998, m: 8, d: 15 });
+});
+
+test('命盘带 schema 版本号', () => {
+  const r = compute({ solar: { y: 1990, m: 5, d: 15 }, shichen: '午', sex: '男' });
+  assert.equal(r.schema_version, 'dsh-bazi/chart@2');
+  assert.equal(r.liuyue.length, 12);
 });

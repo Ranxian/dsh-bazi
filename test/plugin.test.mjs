@@ -125,7 +125,7 @@ function mount() {
 // 挂载面
 // ---------------------------------------------------------------------------
 
-test('插件注册 9 个 bazi_* 工具与协议段、投影单元', () => {
+test('插件注册 11 个 bazi_* 工具与协议段、投影单元', () => {
   const host = mount();
 
   assert.equal(pluginName, 'bazi');
@@ -133,7 +133,8 @@ test('插件注册 9 个 bazi_* 工具与协议段、投影单元', () => {
 
   const expected = [
     'bazi_start', 'bazi_paipan', 'bazi_add_reading', 'bazi_add_calibration',
-    'bazi_confirm_calibration', 'bazi_state', 'bazi_chart', 'bazi_reference', 'bazi_report',
+    'bazi_confirm_calibration', 'bazi_state', 'bazi_chart', 'bazi_liuyue',
+    'bazi_policy', 'bazi_reference', 'bazi_report',
   ];
   assert.deepEqual([...host.tools.keys()].sort(), [...expected].sort());
 
@@ -150,7 +151,7 @@ test('插件注册 9 个 bazi_* 工具与协议段、投影单元', () => {
   assert.match(host.promptSections[0].text(), /bazi_paipan/);
 
   assert.deepEqual(host.projections.map((p) => p.key), ['bazi', 'baziMounted']);
-  assert.equal(host.projections[0].stateVersion, 2, '命盘改从 tool/result 的 meta 折，旧缓存行必须作废');
+  assert.equal(host.projections[0].stateVersion, 3, '命盘/命主新增字段，旧缓存行必须作废');
   assert.equal(host.effects.length, 1, '存储域关闭钩子应注册一次');
 });
 
@@ -574,7 +575,12 @@ test('命盘视图字段与 chartViewSchema 完全一致（不多带字段）', 
   // 落库的命盘行比视图多，取视图时必须滤掉
   const stored = host.opened[0].table('charts').get(SESSION);
   assert.ok(Object.keys(stored).length > Object.keys(chart).length, '命盘行应比视图字段多');
-  assert.equal(chartViewSchema.safeParse(chart).success, true, '视图必须通过 chartViewSchema');
+  const parsedChart = chartViewSchema.safeParse(chart);
+  assert.equal(
+    parsedChart.success,
+    true,
+    `视图必须通过 chartViewSchema${parsedChart.success ? '' : `：${JSON.stringify(parsedChart.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })))}`}`,
+  );
   assert.deepEqual(chartViewSchema.parse(chart), chart, '视图不应有被 schema 悄悄丢掉的字段');
 });
 
@@ -675,10 +681,79 @@ test('协议文本带齐关键纪律与免责声明', () => {
   for (const keyword of [
     'bazi_paipan', 'bazi_start', 'bazi_add_reading', 'bazi_add_calibration',
     'bazi_confirm_calibration', 'bazi_reference', 'bazi_report',
+    'bazi_liuyue', 'bazi_policy',
     '禁止口算', '中文', '命理分析仅供参考',
   ]) {
     assert.ok(BAZI_INSTRUCTIONS.includes(keyword), `协议缺少「${keyword}」`);
   }
+});
+
+test('协议要求遇流派歧义先查口径，且不把五行分值当旺衰', () => {
+  assert.ok(BAZI_INSTRUCTIONS.includes('bazi_policy'), '协议应指向口径工具');
+  assert.match(BAZI_INSTRUCTIONS, /不是旺衰结论/);
+  assert.match(BAZI_INSTRUCTIONS, /纳音/, '协议应说明纳音不参与旺衰');
+});
+
+test('bazi_policy 给出可核对的排盘口径', async () => {
+  const host = mount();
+  const { markdown } = await host.call('bazi_policy', {});
+  for (const keyword of [
+    '立春', '节', '子时', '真太阳时', '均时差', '三天折一年',
+    '十二长生', '胎元', '胎息', '命宫', '身宫', '旬空', '纳音', '神煞',
+  ]) {
+    assert.ok(markdown.includes(keyword), `口径说明缺少「${keyword}」`);
+  }
+  assert.match(markdown, /不是命理定论|不是旺衰结论/, '必须声明五行统计只是参考');
+});
+
+test('bazi_liuyue：列十二流月，并可查流日与所在流月', async () => {
+  const host = mount();
+  await host.call('bazi_start', { sex: '男', solar: '1990-05-15', shichen: '午' });
+  await host.call('bazi_paipan', {});
+
+  const months = await host.call('bazi_liuyue', { year: 2024 });
+  assert.equal(months.year, 2024);
+  assert.equal(months.yearGz, '甲辰');
+  assert.equal(months.months.length, 12);
+  assert.equal(months.months[0].gz, '丙寅');
+  assert.match(months.markdown, /\| 立春 \| 丙寅 \| 2024-02-04 \|/);
+
+  const day = await host.call('bazi_liuyue', { year: 2024, date: '2024-06-15' });
+  assert.match(day.dayGz, /^[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]$/);
+  assert.ok(day.dayMonth.includes('午'), '6-15 应落在午月（芒种后）');
+  assert.ok(day.markdown.includes('流日 2024-06-15'));
+
+  await assert.rejects(() => host.call('bazi_liuyue', { year: 2024, date: '2024/06/15' }), /YYYY-MM-DD/);
+});
+
+test('bazi_liuyue 早于立春的日期归上一流年的丑月', async () => {
+  const host = mount();
+  await host.call('bazi_start', { sex: '男', solar: '1990-05-15', shichen: '午' });
+  await host.call('bazi_paipan', {});
+  const day = await host.call('bazi_liuyue', { year: 2024, date: '2024-01-20' });
+  assert.ok(day.dayMonth.includes('丑'), `1-20 应归丑月，实得 ${day.dayMonth}`);
+});
+
+test('排盘 Markdown 带出纳音/星运/自坐/旬空/四宫位/流月', async () => {
+  const host = mount();
+  await host.call('bazi_start', { sex: '男', solar: '1990-05-15', shichen: '午' });
+  const value = await host.call('bazi_paipan', {});
+  for (const keyword of ['纳音', '星运', '自坐', '旬空', '四宫位', '流月', '交运']) {
+    assert.ok(value.markdown.includes(keyword), `排盘结果缺少「${keyword}」`);
+  }
+  assert.match(value.markdown, /路旁土/);
+  assert.match(value.markdown, /命宫 壬午/);
+});
+
+test('给经度时排盘按真太阳时校正并在结果里标明', async () => {
+  const host = mount();
+  await host.call('bazi_start', {
+    sex: '男', solar: '1990-05-15', hour: 23, minute: 30, longitude: 87.6,
+  });
+  const value = await host.call('bazi_paipan', {});
+  assert.notEqual(value.chart.tst, null);
+  assert.match(value.markdown, /真太阳时/);
+  assert.ok(value.chart.tst.minutes < -120, `乌鲁木齐应西移约 126 分，实得 ${value.chart.tst.minutes}`);
 });
 
 test('参考文档清单与包内文件一一对应', async () => {

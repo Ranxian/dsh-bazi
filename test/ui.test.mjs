@@ -145,11 +145,33 @@ function sampleProjection(overrides = {}) {
       jieName: '立夏',
       hourUnknown: false,
       pillars: {
-        year: { gan: '庚', zhi: '午', shishen: '比肩', canggan: '丁己' },
-        month: { gan: '辛', zhi: '巳', shishen: '劫财', canggan: '丙戊庚' },
-        day: { gan: '庚', zhi: '辰', shishen: '—', canggan: '戊乙癸' },
-        hour: { gan: '壬', zhi: '午', shishen: '食神', canggan: '丁己' },
+        year: {
+          gan: '庚', zhi: '午', shishen: '比肩', canggan: '丁己',
+          nayin: '路旁土', dishi: '沐浴', zizuo: '沐浴', xun: '甲子', kongwang: '戌亥',
+        },
+        month: {
+          gan: '辛', zhi: '巳', shishen: '劫财', canggan: '丙戊庚',
+          nayin: '白蜡金', dishi: '长生', zizuo: '死', xun: '甲戌', kongwang: '申酉',
+        },
+        day: {
+          gan: '庚', zhi: '辰', shishen: '—', canggan: '戊乙癸',
+          nayin: '白蜡金', dishi: '养', zizuo: '养', xun: '甲戌', kongwang: '申酉',
+        },
+        hour: {
+          gan: '壬', zhi: '午', shishen: '食神', canggan: '丁己',
+          nayin: '杨柳木', dishi: '沐浴', zizuo: '胎', xun: '甲戌', kongwang: '申酉',
+        },
       },
+      palaces: { taiyuan: '壬申', taixi: '乙酉', minggong: '壬午', shengong: '戊子' },
+      qiyunReceipt: {
+        rule: 'DAYS_TO_YEARS_V1', status: 'CALCULATED', forward: true,
+        anchorJie: '芒种', days: 21.78, years: 7, months: 3, jiaoyun: '1997-08-15',
+      },
+      liuyue: [
+        { name: '立春', gz: '庚寅', start: '2026-02-04' },
+        { name: '惊蛰', gz: '辛卯', start: '2026-03-05' },
+      ],
+      tst: null,
       dayun: [
         { seq: '1', ages: '8-18岁', gz: '壬午' },
         { seq: '2', ages: '18-28岁', gz: '癸未' },
@@ -326,7 +348,11 @@ test('命盘页签渲染四柱、五行条、神煞、关系与大运', () => {
   const tree = render(Component({ useProjection: () => sampleProjection(), t: (k, p) => (p === undefined ? k : `${k}|${JSON.stringify(p)}`) }));
 
   const pillarCells = textOf(findByTestId(tree, 'bazi-pillars'));
-  for (const expected of ['庚', '午', '辛', '巳', '辰', '壬', '丁己', '丙戊庚', '戊乙癸', 'pillar.year']) {
+  for (const expected of [
+    '庚', '午', '辛', '巳', '辰', '壬', '丁己', '丙戊庚', '戊乙癸', 'pillar.year',
+    '路旁土', '白蜡金', '杨柳木', '沐浴', '长生', '养', '戌亥', '申酉',
+    'col.nayin', 'col.dishi', 'col.zizuo', 'col.kongwang',
+  ]) {
     assert.ok(pillarCells.includes(expected), `四柱表应含 ${expected}`);
   }
 
@@ -347,8 +373,15 @@ test('命盘页签渲染四柱、五行条、神煞、关系与大运', () => {
   // 无警告时不渲染警告卡片
   assert.equal(findByTestId(tree, 'bazi-warnings'), undefined);
 
+  // 四宫位与交运日期进头部（`all` 在下方声明，故此处只查流月卡片）
+  const liuyue = textOf(findByTestId(tree, 'bazi-liuyue'));
+  assert.ok(liuyue.includes('庚寅') && liuyue.includes('2026-02-04'), '流月应含干支与交节日');
+
   // 顶部：姓名、性别、阳历、农历、计数插值
   const all = textOf(tree);
+  // 四宫位与交运日期也在头部
+  assert.ok(all.includes('壬申') && all.includes('乙酉') && all.includes('戊子'), '四宫位应出现在头部');
+  assert.ok(all.includes('1997-08-15'), '交运日期应出现在头部');
   for (const expected of ['张三', '男', '1990-05-15', '1990年四月廿一', 'counts']) {
     assert.ok(all.includes(expected), `头部应含 ${expected}`);
   }
